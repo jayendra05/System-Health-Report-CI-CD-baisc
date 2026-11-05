@@ -1,0 +1,118 @@
+name: System Health Report CI/CD
+
+on:
+
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+
+  # JOB 1: TEST APPLICATION
+
+  test:
+    name: Test Python ${{ matrix.python-version }}
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        run: |
+          pip install pytest
+
+      - name: Run Python Tests
+        run: |
+          pytest
+
+
+  # JOB 2: BUILD APPLICATION
+
+  build:
+    name: Generate Health Report
+
+    needs: test
+
+    runs-on: ubuntu-latest
+
+    env:
+      APP_ENV: Testing
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Execute Python Application
+        run: |
+          python app.py
+
+      - name: Verify Generated Report
+        run: |
+          cat health_report.txt
+
+      - name: Upload Health Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report
+          path: health_report.txt
+
+
+  # JOB 3: DEPLOY APPLICATION
+
+  deploy:
+    name: Deploy Health Report
+
+    needs: build
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: health-report
+          path: report/
+
+      - name: Verify Downloaded Report
+        run: |
+          ls -l report/
+          cat report/health_report.txt
+
+      - name: Deployment Message
+        run: |
+          echo "================================"
+          echo "Application Deployment Complete"
+          echo "================================"
+
+      - name: Failure Notification
+        if: failure()
+        run: |
+          echo "Pipeline failed. Please investigate."
